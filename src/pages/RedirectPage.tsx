@@ -9,12 +9,28 @@
  * The prerendered HTML is the "forward" view, so the first client render must
  * be that too; the real view is chosen in an effect.
  */
-import { Alert, AlertDescription, AlertTitle, Button, Card, Checkbox, Code, Stack, Text, TextLink } from "../ui";
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Box,
+  Button,
+  CardContent,
+  Checkbox,
+  Code,
+  Flex,
+  Label,
+  Spinner,
+  Stack,
+  Text,
+  TextLink,
+} from "../ui";
+import { CircleHelp, Frame, Inbox, ShieldAlert, ShieldX } from "lucide-react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 import { planRedirect, rememberBoard } from "../lib/board-address.js";
 import { isFramed, readRemembered, writeRemembered } from "../lib/storage";
-import { PageTitle, Shell } from "./Shell";
+import { PageHeading, Shell } from "./Shell";
 
 type View =
   | { action: "forward" }
@@ -40,11 +56,25 @@ const REFUSED_REASONS: Record<string, string> = {
   scheme: "It asks to be sent somewhere that is not a web address.",
 };
 
+/** Decorative glyphs beside the title; the title text is the accessible name. */
+const ICONS: Partial<Record<View["action"], ReactNode>> = {
+  forward: <Spinner size="lg" label={null} />,
+  refused: <ShieldX className="text-destructive" />,
+  unknown: <CircleHelp />,
+  nothing: <Inbox />,
+  framed: <Frame />,
+};
+
+const DESCRIPTIONS: Partial<Record<View["action"], string>> = {
+  confirm: "Sign-in worked. The last step is to hand it to your board, at the address below.",
+};
+
 export function RedirectPage() {
   const [view, setView] = useState<View>({ action: "forward" });
   const [remember, setRemember] = useState(true);
   const title = useRef<HTMLHeadingElement>(null);
   const rememberId = useId();
+  const rememberHintId = useId();
 
   useEffect(() => {
     // Framed, the Continue button below could be clicked by trickery. GitHub
@@ -64,17 +94,17 @@ export function RedirectPage() {
     window.location.replace(url);
   }
 
-  return (
-    <Shell
-      footer={
-        view.action === "confirm" || view.action === "forward" ? null : (
-          <TextLink href="boards.html">Boards this browser remembers</TextLink>
-        )
-      }
-    >
-      <Stack gap="4">
-        <PageTitle ref={title}>{TITLES[view.action]}</PageTitle>
+  const showsBoardsLink = view.action !== "confirm" && view.action !== "forward";
 
+  return (
+    <Shell links={showsBoardsLink ? <TextLink href="boards.html">Boards this browser remembers</TextLink> : null}>
+      {/* One heading element for every view, so the focus the effect moves to
+          it survives the switch from the prerendered "forward" view. */}
+      <PageHeading ref={title} icon={ICONS[view.action]} description={DESCRIPTIONS[view.action]}>
+        {TITLES[view.action]}
+      </PageHeading>
+
+      <CardContent>
         {view.action === "forward" && (
           <Text tone="muted">
             If nothing happens, your board may be switched off or on a different network from this device. Check it,
@@ -83,27 +113,49 @@ export function RedirectPage() {
         )}
 
         {view.action === "confirm" && (
-          <>
-            <Text>Sign-in worked. The last step is to hand it to your board at this address:</Text>
-            <Card className="p-4">
-              <Code className="text-base break-all" data-testid="board-address">
+          <Stack gap="5">
+            <Box className="rounded-lg border bg-muted/50 px-4 py-3">
+              <Text as="span" size="xs" tone="muted" weight="medium" className="block uppercase tracking-wide">
+                Board address
+              </Text>
+              <Code
+                data-testid="board-address"
+                className="mt-1 block bg-transparent px-0 py-0 text-base font-semibold leading-snug break-all sm:text-lg"
+              >
                 {view.address}
               </Code>
-            </Card>
+            </Box>
+
             <Alert variant="warning" politeness="polite">
+              <ShieldAlert aria-hidden="true" />
               <AlertTitle>Only continue if you just pressed Connect on this board</AlertTitle>
               <AlertDescription>
                 If you got here from a link someone sent you, or you don't recognise the address, close this page.
               </AlertDescription>
             </Alert>
-            <label htmlFor={rememberId} className="flex items-center gap-2 text-sm">
-              <Checkbox id={rememberId} checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-              Remember this board in this browser, and don't ask again
-            </label>
-            <div>
-              <Button onClick={() => continueToBoard(view.address, view.url)}>Continue to my board</Button>
-            </div>
-          </>
+
+            <Flex align="start" gap="3">
+              <Checkbox
+                id={rememberId}
+                className="mt-0.5"
+                checked={remember}
+                aria-describedby={rememberHintId}
+                onChange={(event) => setRemember(event.target.checked)}
+              />
+              <Stack gap="1">
+                <Label htmlFor={rememberId} className="cursor-pointer">
+                  Remember this board in this browser
+                </Label>
+                <Text id={rememberHintId} size="xs" tone="muted">
+                  Future sign-ins for this address go straight through without asking.
+                </Text>
+              </Stack>
+            </Flex>
+
+            <Button variant="brand" size="lg" className="w-full" onClick={() => continueToBoard(view.address, view.url)}>
+              Continue to my board
+            </Button>
+          </Stack>
         )}
 
         {view.action === "refused" && (
@@ -132,7 +184,7 @@ export function RedirectPage() {
         )}
 
         {view.action === "framed" && <Text>Open it in its own tab and start the connection again from your board.</Text>}
-      </Stack>
+      </CardContent>
     </Shell>
   );
 }
