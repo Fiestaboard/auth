@@ -1,0 +1,11 @@
+{
+  "name": "fiestaboard-auth",
+  "private": true,
+  "description": "Static OAuth redirect relay for self-hosted FiestaBoard installs (fiestaboard.app/auth)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "serve": "python3 -m http.server 8787"
+  }
+}

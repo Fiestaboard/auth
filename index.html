@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+    <title>Sign-in relay · FiestaBoard</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="oauth/style.css">
+  </head>
+  <body>
+    <main>
+      <p class="brand">FiestaBoard</p>
+      <h1>Sign-in relay for FiestaBoard</h1>
+      <p>
+        FiestaBoard runs on your own network, where the services you connect to it can't reach
+        it directly. When you connect an account, the service sends you here, and this site
+        passes you on to your board. It is a few static pages: nothing is stored on a server
+        and there is no tracking.
+      </p>
+      <p><a href="oauth/setup.html">Set up or change your board's address</a></p>
+      <footer>
+        <p>
+          <a href="https://fiestaboard.app">fiestaboard.app</a> ·
+          <a href="https://github.com/Fiestaboard/auth#readme">How this works</a>
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>
