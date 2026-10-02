@@ -1,3 +1,5 @@
-.playwright-mcp/
 node_modules/
+dist/
+dist-ssr/
+.playwright-mcp/
 .DS_Store

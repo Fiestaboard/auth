@@ -7,7 +7,7 @@ complete an OAuth sign-in.
 > **The redirect URL must never change.**
 > `https://fiestaboard.app/auth/oauth/redirect.html` is registered as the redirect URI in every
 > OAuth app that FiestaBoard, or a FiestaBoard user, has created with a provider. Renaming
-> this repository, moving these files, or changing the domain breaks sign-in for every board
+> this repository, moving that page, or changing the domain breaks sign-in for every board
 > until each of those registrations is updated by hand.
 
 ## Why this exists
@@ -23,46 +23,61 @@ browser.
 
 ## How it works
 
-1. **Once per browser**, the person opens [`oauth/setup.html`](oauth/setup.html) and saves
-   their board's address. It is kept in that browser's `localStorage`.
-2. On the board they press **Connect**. The board sends them to the provider with
-   `redirect_uri=https://fiestaboard.app/auth/oauth/redirect.html`.
-3. After sign-in, the provider redirects to
-   [`oauth/redirect.html`](oauth/redirect.html)`?code=…&state=…`.
-4. That page reads the saved address and replaces itself with
-   `<board>/api/oauth/callback?code=…&state=…`.
-5. The board checks `state`, exchanges the code for tokens, and stores them.
+1. On the board, the person presses **Connect** in a plugin. The board sends them to the
+   provider with `redirect_uri=https://fiestaboard.app/auth/oauth/redirect.html` and a `state`
+   that carries the address they are browsing the board at.
+2. After sign-in, the provider redirects to `oauth/redirect.html?code=…&state=…`.
+3. That page reads the board's address out of `state`.
+   - **A board this browser has approved before:** the browser is sent straight on to
+     `<board>/api/oauth/callback?code=…&state=…`.
+   - **A board it has not seen:** the page shows the address and asks. Pressing **Continue**
+     sends the browser on; a "remember this board" checkbox (on by default) means it is not
+     asked again.
+4. The board checks `state`, exchanges the code for tokens, and stores them.
+
+`oauth/boards.html` lists the boards a browser remembers and lets the person forget one.
 
 ## Security model
 
 The risk this design has to manage is a sign-in response being sent to the wrong place.
+`state` comes back from the provider untouched, but that proves nothing here: anyone can
+build a sign-in link whose `state` names any address they like.
 
-- **Saving an address takes a click.** `setup.html` accepts a suggested address in the URL
-  fragment (`#board=…`) so the board's own UI can fill the field in, but nothing is stored
-  until the person presses **Save board address**. A crafted link cannot reroute anyone's
-  sign-in on its own.
-- **`setup.html` refuses to run inside a frame**, so that click cannot be obtained by
-  overlaying the page. GitHub Pages cannot send a `frame-ancestors` header, so the check is
-  done in script.
-- **Only local addresses are accepted**, and the check runs twice: when the address is saved
-  and again on every redirect. A value that reached `localStorage` some other way is refused
-  just the same. See the list below.
-- **The response is passed along untouched and never kept.** `redirect.html` uses
+- **Only local addresses are ever used.** An address in `state` that is not on a local
+  network is refused outright, remembered or not. See the list below.
+- **A person approves each board, in each browser.** The first sign-in for an address stops
+  and shows it. A crafted link cannot move a sign-in on its own; it needs someone to read an
+  address they do not recognise and press Continue anyway.
+- **The pages refuse to run inside a frame**, so that click cannot be obtained by overlaying
+  the page. GitHub Pages cannot send a `frame-ancestors` header, so the check is done in
+  script.
+- **Stored approvals are re-checked.** The remembered list is filtered through the same
+  local-address rule every time it is read, so a value that reached `localStorage` some
+  other way cannot widen where sign-ins go.
+- **The response is passed along untouched and never kept.** The page uses
   `location.replace`, so the URL carrying the code does not stay in the tab's history, and
   every page sets `referrer` to `no-referrer`.
-- **No third-party code.** No analytics, fonts, or scripts from other hosts. Each page sets a
-  Content-Security-Policy of `default-src 'none'` and loads only its own script and
-  stylesheet.
+- **No code from other hosts.** No analytics, and no scripts, styles or fonts loaded from
+  anywhere but this site. Each page sets a Content-Security-Policy of `default-src 'none'`
+  that allows only its own files; `npm run test:dist` fails the build if a page gains an
+  inline script or style.
 
 What this site cannot protect, the board has to:
 
 - GitHub's servers see the request for `redirect.html`, including the authorization code in
   its query string. Boards must use PKCE so that a code is useless without the verifier,
   which never leaves the board.
-- This site cannot tell whether a response is genuine. The board must verify `state`.
+- This site cannot tell whether a response is genuine. The board must verify `state`: that
+  it signed it, that it has not expired, and that it has not been used before.
 - These pages share the `fiestaboard.app` origin with the documentation site, so a script
-  injection there could overwrite the saved address. It could still only point at a local
-  address, because of the second check above.
+  injection there could add to the remembered list. It could still only add a local
+  address, because of the re-check above.
+
+A note for plugin authors: when each user registers their own OAuth app, a crafted link
+gains an attacker nothing they could not already do with an app of their own. If a plugin
+ships a shared client ID, the confirm step above is what stands between that app's
+good name and a sign-in being walked to another machine on the victim's network. Prefer
+per-user client IDs.
 
 ### Addresses that count as local
 
@@ -79,27 +94,41 @@ What this site cannot protect, the board has to:
 | A single word, such as `raspberrypi` | Only a local resolver can answer it |
 
 Anything else is refused, as is any address containing a username, password, query string,
-or fragment. The rules live in [`oauth/board-address.js`](oauth/board-address.js).
+or fragment. The rules live in [`src/lib/board-address.js`](src/lib/board-address.js), a
+dependency-free module with no DOM access.
+
+## How it is built
+
+The pages are React components using [FiestaUI](https://github.com/Fiestaboard/FiestaUI)
+(`@fiestaboard/ui`), prerendered to static HTML at build time and hydrated in the browser.
+
+- `oauth/redirect.html`, `oauth/boards.html`, `index.html` are the page templates.
+- `src/pages/` holds the components; `src/entries/` the browser entry points.
+- `src/entries/redirect.ts` makes the forward-or-ask decision in a few kilobytes and only
+  loads the UI when a person is needed, so the common case does not wait for React.
+- `src/prerender.tsx` and `scripts/prerender.mjs` render each page into the built HTML.
 
 ## Development
 
-No build step and no dependencies.
-
 ```sh
-npm test         # unit tests for the address rules and redirect decision
-npm run serve    # serve the site at http://localhost:8787
+npm install
+npm test          # unit tests for the address rules and redirect decision
+npm run dev       # dev server with hot reload
+npm run build     # typecheck, build and prerender into dist/
+npm run test:dist # invariants of the built site (CSP, no inline code, fixed paths)
+npm run preview   # serve dist/ at http://localhost:8787
 ```
 
-Changes to `oauth/board-address.js` need a test in `tests/`. For anything that loosens what
+Changes to `src/lib/board-address.js` need a test in `tests/`. For anything that loosens what
 counts as a local address, explain in the pull request why the new form cannot be reached
 from the public internet.
 
 ## Deployment
 
-GitHub Pages serves the `main` branch from the repository root. Because the organisation's
-site uses the custom domain `fiestaboard.app`, this repository is published under
-`https://fiestaboard.app/auth/` with that site's certificate. There is nothing else to
-configure, and this repository must not set a custom domain of its own.
+Pushing to `main` runs the tests, builds the site, and deploys `dist/` to GitHub Pages
+(`.github/workflows/deploy.yml`). Because the organisation's site uses the custom domain
+`fiestaboard.app`, this repository is published under `https://fiestaboard.app/auth/` with
+that site's certificate. This repository must not set a custom domain of its own.
 
 ## License
 

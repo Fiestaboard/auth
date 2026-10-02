@@ -1,22 +1,30 @@
-// Board address validation and forwarding, shared by setup.js and redirect.js.
+// Board address validation and forwarding: the security boundary of the relay.
 //
-// This file is the security boundary of the relay. The relay only ever sends
-// an OAuth response to an address that (a) the person saved with an explicit
-// click and (b) passes parseBoardAddress() — at save time AND again at
-// redirect time, so a value planted in localStorage by any other means is
-// still refused.
+// A board on a home network cannot be an OAuth redirect target, so the
+// provider redirects to this site and this site passes the browser on to the
+// board. Which board is carried in the OAuth `state` the board itself built.
+// `state` comes back from the provider untouched but it is not proof of
+// anything here: a crafted sign-in link can carry any address. So the relay
+// only forwards when BOTH hold:
+//
+//   1. the address passes parseBoardAddress() — a host on a local network; and
+//   2. the person has approved that exact address in this browser, either just
+//      now (the confirm step) or earlier with "remember this board".
 //
 // No DOM access in here: everything is a pure function so `node --test` can
 // exercise it without a browser.
 
-export const STORAGE_KEY = "fiestaboard.oauth.board";
+export const STORAGE_KEY = "fiestaboard.oauth.boards";
 
-// Where the board listens for the provider's response, relative to the
-// saved board address. FiestaBoard's nginx routes /api/* to the backend.
+// Where the board listens for the provider's response, relative to its
+// address. FiestaBoard's nginx routes /api/* to the backend.
 export const CALLBACK_PATH = "/api/oauth/callback";
 
 // A query string longer than this is not an OAuth response we recognise.
 const MAX_SEARCH_LENGTH = 8192;
+
+// More remembered boards than this is not one household's worth.
+const MAX_REMEMBERED = 20;
 
 // Hostname suffixes that only ever resolve on a local network.
 //   .local      mDNS (RFC 6762)          e.g. fiestaboard.local
@@ -117,29 +125,88 @@ export function parseBoardAddress(input) {
 }
 
 /**
+ * Read the board address out of an OAuth `state` built by a FiestaBoard.
+ *
+ * The state is `<payload>.<signature>`, where the payload is base64url JSON
+ * with the board's address under `b`. The signature is the board's business;
+ * this site has no key and treats the address as a suggestion to be checked.
+ * Returns "" when there is no usable address.
+ */
+export function boardFromState(state) {
+  if (typeof state !== "string" || state.length > 2048) return "";
+  const payload = state.split(".")[0];
+  if (!payload || !/^[A-Za-z0-9_-]+$/.test(payload)) return "";
+  try {
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    const body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    return body && typeof body.b === "string" ? body.b : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Parse the stored list of remembered boards. Anything that is not a valid
+ * local address is dropped, so a value planted in storage by other means
+ * cannot widen where sign-ins are sent.
+ */
+export function parseRemembered(raw) {
+  if (typeof raw !== "string" || !raw) return [];
+  let list;
+  try {
+    list = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(list)) return [];
+  const boards = [];
+  for (const entry of list) {
+    const parsed = parseBoardAddress(entry);
+    if (parsed.ok && !boards.includes(parsed.address)) boards.push(parsed.address);
+    if (boards.length === MAX_REMEMBERED) break;
+  }
+  return boards;
+}
+
+/** The stored list with *address* added (most recent first). */
+export function rememberBoard(raw, address) {
+  const parsed = parseBoardAddress(address);
+  const boards = parseRemembered(raw);
+  if (!parsed.ok) return JSON.stringify(boards);
+  const rest = boards.filter((board) => board !== parsed.address);
+  return JSON.stringify([parsed.address, ...rest].slice(0, MAX_REMEMBERED));
+}
+
+/** The stored list with *address* removed. */
+export function forgetBoard(raw, address) {
+  return JSON.stringify(parseRemembered(raw).filter((board) => board !== address));
+}
+
+/**
  * Decide what redirect.html should do with the provider's response.
  *
  * Returns one of:
- *   { action: "forward", url }   send the browser to the board
- *   { action: "setup" }          no usable board address is saved
- *   { action: "nothing" }        this is not an OAuth response
+ *   { action: "forward", address, url }  approved earlier: send the browser on
+ *   { action: "confirm", address, url }  local, but not approved in this browser yet
+ *   { action: "refused", reason }        the state names an address that is not local
+ *   { action: "unknown" }                an OAuth response with no board address in it
+ *   { action: "nothing" }                not an OAuth response at all
  */
-export function planRedirect(savedAddress, search) {
+export function planRedirect(rememberedRaw, search) {
   const query = typeof search === "string" ? search : "";
   if (query.length > MAX_SEARCH_LENGTH) return { action: "nothing" };
   const params = new URLSearchParams(query);
   const isOAuthResponse = params.has("state") && (params.has("code") || params.has("error"));
   if (!isOAuthResponse) return { action: "nothing" };
 
-  const board = parseBoardAddress(savedAddress ?? "");
-  if (!board.ok) return { action: "setup" };
+  const suggested = boardFromState(params.get("state"));
+  if (!suggested) return { action: "unknown" };
 
-  return { action: "forward", url: `${board.address}${CALLBACK_PATH}${query}` };
-}
+  const board = parseBoardAddress(suggested);
+  if (!board.ok) return { action: "refused", reason: board.reason };
 
-/** Read the `board` value out of a URL fragment like "#board=http%3A%2F%2F…". */
-export function boardFromFragment(hash) {
-  const fragment = typeof hash === "string" ? hash.replace(/^#/, "") : "";
-  if (!fragment) return "";
-  return new URLSearchParams(fragment).get("board") ?? "";
+  const url = `${board.address}${CALLBACK_PATH}${query}`;
+  const approved = parseRemembered(rememberedRaw).includes(board.address);
+  return { action: approved ? "forward" : "confirm", address: board.address, url };
 }

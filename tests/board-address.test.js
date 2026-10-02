@@ -3,11 +3,14 @@ import { test } from "node:test";
 
 import {
   CALLBACK_PATH,
-  boardFromFragment,
+  boardFromState,
+  forgetBoard,
   isLocalHost,
   parseBoardAddress,
+  parseRemembered,
   planRedirect,
-} from "../oauth/board-address.js";
+  rememberBoard,
+} from "../src/lib/board-address.js";
 
 const accepted = [
   ["http://192.168.1.50:4420", "http://192.168.1.50:4420"],
@@ -121,60 +124,163 @@ test("isLocalHost refuses a bare suffix", () => {
   assert.equal(isLocalHost(""), false);
 });
 
-test("planRedirect forwards a successful response to the saved board", () => {
-  assert.deepEqual(planRedirect("http://192.168.1.50:4420", "?code=abc&state=xyz"), {
-    action: "forward",
-    url: `http://192.168.1.50:4420${CALLBACK_PATH}?code=abc&state=xyz`,
-  });
+// A state shaped the way a FiestaBoard builds it: base64url JSON, a dot, a signature.
+function stateFor(board, extra = {}) {
+  const payload = Buffer.from(JSON.stringify({ n: "nonce", c: "music", e: 1900000000, b: board, ...extra }));
+  return `${payload.toString("base64url")}.c2lnbmF0dXJl`;
+}
+
+const BOARD = "http://192.168.1.50:4420";
+const REMEMBERED = JSON.stringify([BOARD]);
+
+function search(board, rest = "code=abc") {
+  return `?${rest}&state=${stateFor(board)}`;
+}
+
+// ── boardFromState ──────────────────────────────────────────────────────────
+
+test("boardFromState reads the address a board put in its state", () => {
+  assert.equal(boardFromState(stateFor(BOARD)), BOARD);
 });
 
-test("planRedirect forwards a provider error so the board can report it", () => {
-  const plan = planRedirect("http://fiestaboard.local:4420", "?error=access_denied&state=xyz");
-  assert.equal(plan.action, "forward");
-  assert.equal(plan.url, `http://fiestaboard.local:4420${CALLBACK_PATH}?error=access_denied&state=xyz`);
+test("boardFromState reads an address with non-ASCII characters", () => {
+  assert.equal(boardFromState(stateFor("http://tablero-señal.local")), "http://tablero-señal.local");
 });
 
-test("planRedirect keeps the query string byte-for-byte", () => {
-  const search = "?state=a.b-c_d&code=4%2F0AX%2Bz&scope=a+b&iss=https%3A%2F%2Fid.example";
-  const plan = planRedirect("http://10.0.0.7", search);
-  assert.equal(plan.url, `http://10.0.0.7${CALLBACK_PATH}${search}`);
-});
-
-test("planRedirect keeps a path prefix ahead of the callback path", () => {
-  const plan = planRedirect("http://homeassistant.local:8123/api/hassio_ingress/abc123", "?code=a&state=b");
-  assert.equal(plan.url, `http://homeassistant.local:8123/api/hassio_ingress/abc123${CALLBACK_PATH}?code=a&state=b`);
-});
-
-test("planRedirect asks for setup when nothing is saved", () => {
-  for (const saved of [null, undefined, ""]) {
-    assert.deepEqual(planRedirect(saved, "?code=abc&state=xyz"), { action: "setup" });
+test("boardFromState returns an empty string for anything that is not such a state", () => {
+  const notJson = Buffer.from("not json").toString("base64url");
+  const noBoard = Buffer.from(JSON.stringify({ n: "x" })).toString("base64url");
+  const wrongType = Buffer.from(JSON.stringify({ b: 42 })).toString("base64url");
+  const jsonNull = Buffer.from("null").toString("base64url");
+  for (const state of [null, undefined, "", ".", "plain", "!!!.sig", `${notJson}.sig`, `${noBoard}.sig`, `${wrongType}.sig`, `${jsonNull}.sig`, "a".repeat(3000)]) {
+    assert.equal(boardFromState(state), "", JSON.stringify(state));
   }
 });
 
-test("planRedirect refuses a saved address that is not local, however it got there", () => {
-  for (const saved of ["https://evil.example", "javascript:alert(1)", "http://192.168.1.50@evil.example"]) {
-    assert.deepEqual(planRedirect(saved, "?code=abc&state=xyz"), { action: "setup" });
+// ── Remembered boards ───────────────────────────────────────────────────────
+
+test("parseRemembered returns the stored addresses", () => {
+  assert.deepEqual(parseRemembered(JSON.stringify([BOARD, "http://fiestaboard.local:4420"])), [
+    BOARD,
+    "http://fiestaboard.local:4420",
+  ]);
+});
+
+test("parseRemembered drops anything that is not a local address, however it got there", () => {
+  const stored = JSON.stringify(["https://evil.example", BOARD, "javascript:alert(1)", 7, null, BOARD]);
+  assert.deepEqual(parseRemembered(stored), [BOARD]);
+});
+
+test("parseRemembered treats unreadable storage as empty", () => {
+  for (const raw of [null, undefined, "", "{not json", '"a string"', "{}", "42"]) {
+    assert.deepEqual(parseRemembered(raw), []);
+  }
+});
+
+test("rememberBoard adds an address once, most recent first", () => {
+  const once = rememberBoard(null, BOARD);
+  assert.deepEqual(JSON.parse(once), [BOARD]);
+  const twice = rememberBoard(once, "http://10.0.0.7");
+  assert.deepEqual(JSON.parse(twice), ["http://10.0.0.7", BOARD]);
+  assert.deepEqual(JSON.parse(rememberBoard(twice, `${BOARD}/`)), [BOARD, "http://10.0.0.7"]);
+});
+
+test("rememberBoard will not store an address that is not local", () => {
+  assert.deepEqual(JSON.parse(rememberBoard(REMEMBERED, "https://evil.example")), [BOARD]);
+});
+
+test("rememberBoard keeps a bounded list", () => {
+  let raw = null;
+  for (let i = 1; i <= 30; i += 1) raw = rememberBoard(raw, `http://10.0.0.${i}`);
+  const boards = JSON.parse(raw);
+  assert.equal(boards.length, 20);
+  assert.equal(boards[0], "http://10.0.0.30");
+});
+
+test("forgetBoard removes only the named address", () => {
+  const raw = JSON.stringify([BOARD, "http://10.0.0.7"]);
+  assert.deepEqual(JSON.parse(forgetBoard(raw, BOARD)), ["http://10.0.0.7"]);
+  assert.deepEqual(JSON.parse(forgetBoard(raw, "http://10.9.9.9")), [BOARD, "http://10.0.0.7"]);
+});
+
+// ── planRedirect ────────────────────────────────────────────────────────────
+
+test("planRedirect forwards straight to a board this browser has approved before", () => {
+  const query = search(BOARD);
+  assert.deepEqual(planRedirect(REMEMBERED, query), {
+    action: "forward",
+    address: BOARD,
+    url: `${BOARD}${CALLBACK_PATH}${query}`,
+  });
+});
+
+test("planRedirect asks first for a local board this browser has not approved", () => {
+  const query = search(BOARD);
+  for (const remembered of [null, "", "[]", JSON.stringify(["http://10.0.0.7"])]) {
+    assert.deepEqual(planRedirect(remembered, query), {
+      action: "confirm",
+      address: BOARD,
+      url: `${BOARD}${CALLBACK_PATH}${query}`,
+    });
+  }
+});
+
+test("planRedirect matches an approved board whatever spelling the state uses", () => {
+  const plan = planRedirect(REMEMBERED, search("HTTP://192.168.1.50:4420/"));
+  assert.equal(plan.action, "forward");
+  assert.equal(plan.address, BOARD);
+});
+
+test("planRedirect never forwards to a public address, approved or not", () => {
+  const planted = JSON.stringify(["https://evil.example"]);
+  for (const remembered of [null, planted]) {
+    assert.deepEqual(planRedirect(remembered, search("https://evil.example")), { action: "refused", reason: "public" });
+  }
+});
+
+test("planRedirect refuses every non-local form a crafted state could carry", () => {
+  const crafted = {
+    "http://192.168.1.50@evil.example": "credentials",
+    "javascript:alert(1)": "scheme",
+    "http://192.168.1.50.evil.example": "public",
+    "http://192.168.1.50/?next=https://evil.example": "extra",
+    "http://8.8.8.8": "public",
+  };
+  for (const [board, reason] of Object.entries(crafted)) {
+    assert.deepEqual(planRedirect(REMEMBERED, search(board)), { action: "refused", reason }, board);
+  }
+});
+
+test("planRedirect forwards a provider error so the board can report it", () => {
+  const query = search(BOARD, "error=access_denied");
+  assert.equal(planRedirect(REMEMBERED, query).url, `${BOARD}${CALLBACK_PATH}${query}`);
+});
+
+test("planRedirect keeps the query string byte-for-byte", () => {
+  const query = `?code=4%2F0AX%2Bz&scope=a+b&iss=https%3A%2F%2Fid.example&state=${stateFor(BOARD)}`;
+  assert.equal(planRedirect(REMEMBERED, query).url, `${BOARD}${CALLBACK_PATH}${query}`);
+});
+
+test("planRedirect keeps a path prefix ahead of the callback path", () => {
+  const board = "http://homeassistant.local:8123/api/hassio_ingress/abc123";
+  const plan = planRedirect(JSON.stringify([board]), search(board));
+  assert.equal(plan.action, "forward");
+  assert.ok(plan.url.startsWith(`${board}${CALLBACK_PATH}?`));
+});
+
+test("planRedirect reports an OAuth response whose state names no board", () => {
+  for (const state of ["opaque-state", "abc.def", stateFor(undefined), stateFor("")]) {
+    assert.deepEqual(planRedirect(REMEMBERED, `?code=abc&state=${state}`), { action: "unknown" });
   }
 });
 
 test("planRedirect does nothing without an OAuth response", () => {
-  for (const search of ["", "?", "?code=abc", "?state=xyz", "?foo=bar", null, undefined]) {
-    assert.deepEqual(planRedirect("http://192.168.1.50:4420", search), { action: "nothing" });
+  for (const query of ["", "?", "?code=abc", `?state=${stateFor(BOARD)}`, "?foo=bar", null, undefined]) {
+    assert.deepEqual(planRedirect(REMEMBERED, query), { action: "nothing" });
   }
 });
 
 test("planRedirect does nothing with an oversized query string", () => {
-  const search = `?code=${"a".repeat(9000)}&state=xyz`;
-  assert.deepEqual(planRedirect("http://192.168.1.50:4420", search), { action: "nothing" });
-});
-
-test("boardFromFragment reads the board value", () => {
-  assert.equal(boardFromFragment("#board=http%3A%2F%2F192.168.1.50%3A4420"), "http://192.168.1.50:4420");
-  assert.equal(boardFromFragment("board=http://fiestaboard.local:4420"), "http://fiestaboard.local:4420");
-});
-
-test("boardFromFragment returns an empty string when there is no board value", () => {
-  for (const hash of ["", "#", "#other=1", null, undefined]) {
-    assert.equal(boardFromFragment(hash), "");
-  }
+  const query = `?code=${"a".repeat(9000)}&state=${stateFor(BOARD)}`;
+  assert.deepEqual(planRedirect(REMEMBERED, query), { action: "nothing" });
 });

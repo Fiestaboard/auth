@@ -4,53 +4,20 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'">
     <meta name="robots" content="noindex">
     <title>Returning to your board · FiestaBoard</title>
-    <link rel="icon" href="../favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="style.css">
-    <script type="module" src="redirect.js"></script>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" href="/src/styles.css">
+    <script type="module" src="/src/entries/redirect.ts"></script>
   </head>
   <body>
-    <main>
-      <p class="brand">FiestaBoard</p>
-
-      <noscript>
-        <h1>JavaScript is turned off</h1>
-        <p>
-          This page needs JavaScript to send you back to your board. Turn it on, then start the
-          connection again from your board.
-        </p>
-      </noscript>
-
-      <section id="panel-forward" data-panel hidden>
-        <h1 tabindex="-1">Returning to your board…</h1>
-        <p>
-          If nothing happens, your board may be switched off or on a different network from
-          this device. Check it, then start the connection again from your board.
-        </p>
-      </section>
-
-      <section id="panel-setup" data-panel hidden>
-        <h1 tabindex="-1">This browser doesn't know where your board is</h1>
-        <p>
-          Sign-in worked, but there is no board address saved in this browser, so there is
-          nowhere to send you back to.
-        </p>
-        <ol>
-          <li><a href="setup.html">Save your board's address</a> (one time per browser).</li>
-          <li>Go back to your board and start the connection again.</li>
-        </ol>
-      </section>
-
-      <section id="panel-nothing" data-panel hidden>
-        <h1 tabindex="-1">Nothing to do here</h1>
-        <p>
-          This page finishes connecting an account to a FiestaBoard. It only works when a
-          sign-in sends you here, so start from the Connect button on your board.
-        </p>
-        <p><a href="setup.html">Set up or change your board's address</a></p>
-      </section>
-    </main>
+    <noscript>
+      <p class="mx-auto max-w-xl px-4 pt-10 text-sm font-medium text-destructive">
+        This page needs JavaScript turned on. Turn it on, then start the connection again from your board.
+      </p>
+    </noscript>
+    <div id="root"><!--app--></div>
   </body>
 </html>
