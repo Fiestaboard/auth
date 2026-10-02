@@ -86,13 +86,20 @@ function start() {
 
   renderSaved(store);
 
-  const suggested = boardFromFragment(window.location.hash);
-  if (suggested) {
+  const applySuggestion = () => {
+    const suggested = boardFromFragment(window.location.hash);
+    if (!suggested) return;
     input.value = suggested;
     prefillNote.hidden = false;
+    setError("");
+    status.textContent = "";
     // Drop the fragment so a reload or a shared screenshot doesn't carry it.
     window.history.replaceState(null, "", window.location.pathname);
-  }
+  };
+  applySuggestion();
+  // A link followed while this page is already open changes only the
+  // fragment, which does not reload the page.
+  window.addEventListener("hashchange", applySuggestion);
 
   input.addEventListener("input", () => {
     setError("");
