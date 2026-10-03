@@ -7,7 +7,7 @@ complete an OAuth sign-in.
 > **The redirect URL must never change.**
 > `https://fiestaboard.app/auth/oauth/redirect` is registered as the redirect URI in OAuth apps
 > that FiestaBoard users have created with providers, and so is the same address with `.html`
-> on the end (FiestaBoard 9.5 and 9.6 send that form). Both must keep working. Renaming this
+> on the end (FiestaBoard 9.5 through 9.7 send that form). Both must keep working. Renaming this
 > repository, moving `oauth/redirect.html`, changing the domain, or moving to a host that does
 > not also serve the page without its `.html` extension (GitHub Pages does) breaks sign-in for
 > every board until each of those registrations is updated by hand.
