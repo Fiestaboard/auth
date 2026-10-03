@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build && vite build --ssr src/prerender.tsx --outDir dist-ssr && node scripts/prerender.mjs",
     "preview": "vite preview --port 8787",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/board-address.test.js",
+    "test": "node --test tests/board-address.test.js tests/clients.test.js",
     "test:dist": "node --test tests/dist.test.js"
   },
   "dependencies": {

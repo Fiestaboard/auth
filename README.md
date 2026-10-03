@@ -115,6 +115,18 @@ The pages are React components using [FiestaUI](https://github.com/Fiestaboard/F
   loads the UI when a person is needed, so the common case does not wait for React.
 - `src/prerender.tsx` and `scripts/prerender.mjs` render each page into the built HTML.
 
+## OAuth client metadata documents
+
+Some providers (Todoist, Hugging Face) accept a URL as the `client_id` and fetch the app's
+details from it, so nobody has to register an app
+([draft-ietf-oauth-client-id-metadata-document](https://datatracker.ietf.org/doc/draft-ietf-oauth-client-id-metadata-document/)).
+`public/clients/<name>.json` is copied into the site unchanged and served at
+`https://fiestaboard.app/auth/clients/<name>.json`, which is also its `client_id`.
+
+Like the redirect URL, **these URLs must never change**: FiestaBoard plugins ship them as
+their client ID. Each lists both redirect URIs and `"token_endpoint_auth_method": "none"`
+(a public client using PKCE); none may ever carry a secret.
+
 ## Development
 
 ```sh

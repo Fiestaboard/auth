@@ -94,3 +94,11 @@ test("no script or stylesheet references another host", () => {
     assert.doesNotMatch(css, /@import\s+(url\()?["']?https?:/);
   }
 });
+
+test("OAuth client metadata documents are published at their client_id URLs", () => {
+  // The client_id is this URL; moving a document breaks every sign-in that uses it.
+  for (const name of ["todoist", "huggingface"]) {
+    const doc = JSON.parse(read(`clients/${name}.json`));
+    assert.equal(doc.client_id, `https://fiestaboard.app/auth/clients/${name}.json`);
+  }
+});

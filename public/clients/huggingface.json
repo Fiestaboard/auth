@@ -1,0 +1,10 @@
+{
+  "client_id": "https://fiestaboard.app/auth/clients/huggingface.json",
+  "client_name": "FiestaBoard",
+  "client_uri": "https://fiestaboard.app/",
+  "redirect_uris": [
+    "https://fiestaboard.app/auth/oauth/redirect",
+    "https://fiestaboard.app/auth/oauth/redirect.html"
+  ],
+  "token_endpoint_auth_method": "none"
+}

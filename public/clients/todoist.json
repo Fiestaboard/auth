@@ -1,0 +1,13 @@
+{
+  "client_id": "https://fiestaboard.app/auth/clients/todoist.json",
+  "client_name": "FiestaBoard",
+  "client_uri": "https://fiestaboard.app/",
+  "redirect_uris": [
+    "https://fiestaboard.app/auth/oauth/redirect",
+    "https://fiestaboard.app/auth/oauth/redirect.html"
+  ],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none",
+  "scope": "data:read"
+}
