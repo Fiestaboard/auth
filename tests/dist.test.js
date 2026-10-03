@@ -17,7 +17,11 @@ const attributes = (html, tag, name) =>
   [...html.matchAll(new RegExp(`<${tag}\\b[^>]*\\s${name}="([^"]*)"`, "g"))].map((match) => match[1]);
 
 test("the redirect page exists at the path registered with OAuth providers", () => {
+  // Providers hold both /auth/oauth/redirect and /auth/oauth/redirect.html.
+  // GitHub Pages serves this one file at both, so it must stay exactly here,
+  // and nothing else may claim the extensionless path.
   assert.ok(existsSync(resolve(dist, "oauth/redirect.html")), "oauth/redirect.html must never move");
+  assert.ok(!existsSync(resolve(dist, "oauth/redirect")), "nothing may shadow the extensionless path");
 });
 
 test("GitHub Pages is told not to run Jekyll", () => {

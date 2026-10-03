@@ -5,10 +5,16 @@ A few static pages, served from GitHub Pages at **https://fiestaboard.app/auth/*
 complete an OAuth sign-in.
 
 > **The redirect URL must never change.**
-> `https://fiestaboard.app/auth/oauth/redirect.html` is registered as the redirect URI in every
-> OAuth app that FiestaBoard, or a FiestaBoard user, has created with a provider. Renaming
-> this repository, moving that page, or changing the domain breaks sign-in for every board
-> until each of those registrations is updated by hand.
+> `https://fiestaboard.app/auth/oauth/redirect` is registered as the redirect URI in OAuth apps
+> that FiestaBoard users have created with providers, and so is the same address with `.html`
+> on the end (FiestaBoard 9.5 and 9.6 send that form). Both must keep working. Renaming this
+> repository, moving `oauth/redirect.html`, changing the domain, or moving to a host that does
+> not also serve the page without its `.html` extension (GitHub Pages does) breaks sign-in for
+> every board until each of those registrations is updated by hand.
+
+Building a FiestaBoard plugin that signs in? Start with the
+[plugin author's guide](https://fiestaboard.app/docs/development/plugin-oauth). You do not
+need to change or host anything here.
 
 ## Why this exists
 
@@ -24,9 +30,10 @@ browser.
 ## How it works
 
 1. On the board, the person presses **Connect** in a plugin. The board sends them to the
-   provider with `redirect_uri=https://fiestaboard.app/auth/oauth/redirect.html` and a `state`
+   provider with `redirect_uri=https://fiestaboard.app/auth/oauth/redirect` and a `state`
    that carries the address they are browsing the board at.
-2. After sign-in, the provider redirects to `oauth/redirect.html?code=…&state=…`.
+2. After sign-in, the provider redirects to that address with `?code=…&state=…`, which
+   GitHub Pages serves from `oauth/redirect.html`.
 3. That page reads the board's address out of `state`.
    - **A board this browser has approved before:** the browser is sent straight on to
      `<board>/api/oauth/callback?code=…&state=…`.
