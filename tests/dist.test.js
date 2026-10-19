@@ -56,12 +56,22 @@ for (const page of PAGES) {
     const urls = [
       ...attributes(html, "script", "src"),
       ...attributes(html, "link", "href"),
-      ...attributes(html, "img", "src"),
     ];
     assert.ok(urls.length > 0);
     for (const url of urls) {
       assert.doesNotMatch(url, /^([a-z][a-z0-9+.-]*:|\/)/i, `${url} is not relative`);
       assert.ok(existsSync(resolve(dist, dirname(page), url)), `${url} does not exist in dist`);
+    }
+  });
+
+  test(`${page} loads images from this site or embeds the loading artwork`, () => {
+    for (const url of attributes(html, "img", "src")) {
+      if (url.startsWith("data:")) {
+        assert.match(url, /^data:image\/(png|webp);base64,[A-Za-z0-9+/]+={0,2}$/);
+      } else {
+        assert.doesNotMatch(url, /^([a-z][a-z0-9+.-]*:|\/)/i, "image URL must be relative");
+        assert.ok(existsSync(resolve(dist, dirname(page), url)), `${url} does not exist in dist`);
+      }
     }
   });
 

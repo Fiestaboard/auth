@@ -97,7 +97,10 @@ export function RedirectPage() {
   const showsBoardsLink = view.action !== "confirm" && view.action !== "forward";
 
   return (
-    <Shell links={showsBoardsLink ? <TextLink href="boards.html">Boards this browser remembers</TextLink> : null}>
+    <Shell
+      showBrandIcon={view.action !== "forward"}
+      links={showsBoardsLink ? <TextLink href="boards.html">Boards this browser remembers</TextLink> : null}
+    >
       {/* One heading element for every view, so the focus the effect moves to
           it survives the switch from the prerendered "forward" view. */}
       <PageHeading ref={title} icon={ICONS[view.action]} description={DESCRIPTIONS[view.action]}>
